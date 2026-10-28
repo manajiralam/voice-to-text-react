@@ -20,6 +20,31 @@ import "./App.css";
 const SpeechRecognition =
   window.SpeechRecognition || window.webkitSpeechRecognition;
 
+// Mobile Chrome repeats text when "continuous" mode is on,
+// so on phones we listen in short sessions and restart automatically.
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+// Join all results of one listening session into a single text.
+// On mobile, a result that just extends the previous one replaces it
+// (this removes the "hello hello hello" duplicates).
+function buildSessionText(results) {
+  const parts = [];
+
+  for (let i = 0; i < results.length; i++) {
+    const t = results[i][0].transcript.trim();
+    if (!t) continue;
+
+    const last = parts[parts.length - 1];
+    if (isMobile && last && t.startsWith(last)) {
+      parts[parts.length - 1] = t;
+    } else {
+      parts.push(t);
+    }
+  }
+
+  return parts.join(" ");
+}
+
 export default function App() {
   const supported = Boolean(SpeechRecognition);
 
@@ -40,9 +65,18 @@ export default function App() {
 
   // useRef: values that must survive re-renders without causing one
   const recognitionRef = useRef(null);
-  const finalTextRef = useRef("");
+  const committedRef = useRef(""); // text that is already saved
+  const sessionRef = useRef(""); // text of the current listening session
   const languageRef = useRef("bn-BD");
-  const restartPendingRef = useRef(false);
+  const wantListeningRef = useRef(false); // true until the user presses Stop
+
+  // Move the current session text into the saved text
+  const commitSession = () => {
+    if (sessionRef.current) {
+      committedRef.current += sessionRef.current + " ";
+      sessionRef.current = "";
+    }
+  };
 
   // Create the recognition object once, when the page loads
   useEffect(() => {
@@ -50,59 +84,50 @@ export default function App() {
 
     const recognition = new SpeechRecognition();
     recognition.lang = languageRef.current;
-    recognition.continuous = true;
+    recognition.continuous = !isMobile;
     recognition.interimResults = true;
 
     recognition.onstart = () => {
       setIsListening(true);
-      setStatus({
-        Icon: AudioLines,
-        message: "Listening... speak now",
-      });
+      setStatus({ Icon: AudioLines, message: "Listening... speak now" });
     };
 
     recognition.onend = () => {
-      setIsListening(false);
+      commitSession();
 
-      // If the language was changed while listening, restart with the new one
-      if (restartPendingRef.current) {
-        restartPendingRef.current = false;
-        recognition.lang = languageRef.current;
-        recognition.start();
-        return;
+      // Still want to listen (mobile auto-restart or language change)
+      if (wantListeningRef.current) {
+        try {
+          recognition.lang = languageRef.current;
+          recognition.start();
+          return;
+        } catch (error) {
+          wantListeningRef.current = false;
+        }
       }
 
+      setIsListening(false);
       setStatus({ Icon: CirclePause, message: "Stopped" });
     };
 
     recognition.onresult = (event) => {
-      let interimText = "";
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-
-        if (event.results[i].isFinal) {
-          finalTextRef.current += transcript + " ";
-        } else {
-          interimText += transcript;
-        }
-      }
-
-      setText(finalTextRef.current + interimText);
+      sessionRef.current = buildSessionText(event.results);
+      setText(committedRef.current + sessionRef.current);
     };
 
     recognition.onerror = (event) => {
-      restartPendingRef.current = false;
-      setStatus({
-        Icon: CircleX,
-        message: "Error: " + event.error,
-      });
+      // These are normal: silence or a manual stop. Not real errors.
+      if (event.error === "no-speech" || event.error === "aborted") return;
+
+      wantListeningRef.current = false;
+      setStatus({ Icon: CircleX, message: "Error: " + event.error });
     };
 
     recognitionRef.current = recognition;
 
     // Cleanup when the component is removed
     return () => {
+      wantListeningRef.current = false;
       recognition.onstart = null;
       recognition.onend = null;
       recognition.onresult = null;
@@ -115,6 +140,7 @@ export default function App() {
     if (isListening) return;
 
     try {
+      wantListeningRef.current = true;
       recognitionRef.current.lang = languageRef.current;
       recognitionRef.current.start();
     } catch (error) {
@@ -123,32 +149,27 @@ export default function App() {
   };
 
   const handleStop = () => {
-    restartPendingRef.current = false;
+    wantListeningRef.current = false;
     recognitionRef.current.stop();
   };
 
   const handleCopy = async () => {
     if (text.trim() === "") {
-      setStatus({
-        Icon: CircleAlert,
-        message: "Nothing to copy",
-      });
+      setStatus({ Icon: CircleAlert, message: "Nothing to copy" });
       return;
     }
 
     try {
       await navigator.clipboard.writeText(text);
-      setStatus({
-        Icon: CircleCheck,
-        message: "Copied to clipboard!",
-      });
+      setStatus({ Icon: CircleCheck, message: "Copied to clipboard!" });
     } catch (error) {
       setStatus({ Icon: CircleX, message: "Could not copy" });
     }
   };
 
   const handleClear = () => {
-    finalTextRef.current = "";
+    committedRef.current = "";
+    sessionRef.current = "";
     setText("");
     setStatus({ Icon: Eraser, message: "Everything cleared" });
   };
@@ -156,7 +177,8 @@ export default function App() {
   // If the user types in the box manually, keep our saved text in sync
   const handleTextChange = (event) => {
     setText(event.target.value);
-    finalTextRef.current = event.target.value;
+    committedRef.current = event.target.value;
+    sessionRef.current = "";
   };
 
   const handleLanguageSelect = (lang) => {
@@ -164,7 +186,7 @@ export default function App() {
     languageRef.current = lang.code;
 
     if (isListening) {
-      restartPendingRef.current = true;
+      // onend will restart listening with the new language
       recognitionRef.current.stop();
     } else {
       setStatus({ Icon: Globe, message: "Language: " + lang.name });
