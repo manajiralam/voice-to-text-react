@@ -24,3 +24,8 @@ git branch -M main
 git remote add origin https://github.com/YOUR-USERNAME/voice-to-text-react.git
 git push -u origin main
 ```
+
+## Install as an app (PWA)
+1. Deploy to Vercel (needs https).
+2. Open the link in Chrome on Android.
+3. Menu (three dots) -> Install app.
