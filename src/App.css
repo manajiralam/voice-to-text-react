@@ -504,3 +504,18 @@ textarea,
 .theme-toggle:active {
   transform: scale(0.92);
 }
+/* ===== Phone: no box, content sits on the background ===== */
+@media (max-width: 600px) {
+  body {
+    padding: 0;
+  }
+
+  .card {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    max-width: 100%;
+    padding: 70px 20px 30px;
+  }
+}
