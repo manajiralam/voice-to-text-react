@@ -13,6 +13,8 @@ import {
   CirclePause,
   Eraser,
   TriangleAlert,
+  Sun,
+  Moon,
 } from "lucide-react";
 import LanguageSelect from "./LanguageSelect";
 import "./App.css";
@@ -69,6 +71,34 @@ export default function App() {
   const sessionRef = useRef(""); // text of the current listening session
   const languageRef = useRef("bn-BD");
   const wantListeningRef = useRef(false); // true until the user presses Stop
+
+  // Light / dark theme (remembered in the browser)
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem("theme") || "dark";
+    } catch (error) {
+      return "dark";
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+
+    try {
+      localStorage.setItem("theme", theme);
+    } catch (error) {
+      // storage may be blocked, that is fine
+    }
+
+    // colour of the phone's browser bar
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", theme === "light" ? "#efeae0" : "#0b0b0f");
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((current) => (current === "dark" ? "light" : "dark"));
+  };
 
   // Move the current session text into the saved text
   const commitSession = () => {
@@ -195,7 +225,16 @@ export default function App() {
 
   return (
     <div className="card">
-      <div className="logo">
+      <button
+        className="theme-toggle"
+        onClick={toggleTheme}
+        aria-label="Switch theme"
+        title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
+      </button>
+
+      <div className={`logo ${isListening ? "listening" : ""}`}>
         <AudioLines size={30} strokeWidth={2} />
       </div>
       <h1>Voice to Text</h1>
