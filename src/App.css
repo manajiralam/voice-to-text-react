@@ -355,7 +355,7 @@ svg {
 .logo {
   width: 68px;
   height: 68px;
-  margin: 0 auto 16px;
+  margin: 0 auto 48px;
   border-radius: 50%;
   display: grid;
   place-items: center;
